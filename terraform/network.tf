@@ -1,0 +1,56 @@
+# Red privada virtual (VPC) aislada que contiene todo el laboratorio.
+resource "aws_vpc" "lab" {
+  cidr_block = var.vpc_cidr
+  # Habilita la resolucion DNS interna y la asignacion de nombres de host,
+  # necesario para el trafico entre nodos por nombre/IP.
+  enable_dns_support   = true
+  enable_dns_hostnames = true
+
+  tags = {
+    Name = "${var.project_name}-vpc"
+  }
+}
+
+# Puerta de enlace a Internet: punto de salida/entrada de la VPC hacia Internet.
+resource "aws_internet_gateway" "lab" {
+  vpc_id = aws_vpc.lab.id
+
+  tags = {
+    Name = "${var.project_name}-igw"
+  }
+}
+
+# Subred publica donde se lanzan las tres instancias.
+resource "aws_subnet" "public" {
+  vpc_id            = aws_vpc.lab.id
+  cidr_block        = var.public_subnet_cidr
+  availability_zone = var.availability_zone
+  # Asigna automaticamente una IP publica a cada instancia lanzada aqui.
+  map_public_ip_on_launch = true
+
+  tags = {
+    Name = "${var.project_name}-public-subnet"
+  }
+}
+
+# Tabla de rutas que define hacia donde se envia el trafico de la subred.
+resource "aws_route_table" "public" {
+  vpc_id = aws_vpc.lab.id
+
+  # Ruta por defecto: todo el trafico no local (0.0.0.0/0) sale por el IGW.
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.lab.id
+  }
+
+  tags = {
+    Name = "${var.project_name}-public-rt"
+  }
+}
+
+# Asociacion que vincula la subred con la tabla de rutas anterior.
+# Sin esta asociacion, la subred no sabria enrutar hacia el IGW.
+resource "aws_route_table_association" "public" {
+  subnet_id      = aws_subnet.public.id
+  route_table_id = aws_route_table.public.id
+}
