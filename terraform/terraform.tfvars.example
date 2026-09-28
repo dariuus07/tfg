@@ -12,6 +12,12 @@ ssh_key_name = "your-key-name"
 # Use su IP publica en formato /32. No se admite 0.0.0.0/0 (minimo privilegio).
 admin_cidr = "203.0.113.10/32"
 
+# Token del bot de Telegram (generado con @BotFather). Valor sensible.
+telegram_token = "0000000000:AAExampleTokenString"
+
+# Identificador del chat de Telegram destinatario (obtenido de @userinfobot).
+telegram_chat_id = "123456789"
+
 # --- Variables OPCIONALES (se muestran sus valores por defecto) ---
 
 # Region de despliegue.
@@ -27,3 +33,6 @@ project_name = "tfg-devsecops-lab"
 manager_instance_type  = "t3.xlarge"
 victim_instance_type   = "t3.medium"
 attacker_instance_type = "t3.small"
+
+# Modelo local servido por Ollama.
+ollama_model = "tinyllama"

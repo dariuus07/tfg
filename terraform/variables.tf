@@ -104,3 +104,24 @@ variable "node_root_volume_size" {
   type        = number
   default     = 20
 }
+
+# Token del bot de Telegram (generado por @BotFather). Marcado como sensible
+# para que Terraform no lo muestre en la salida ni en los logs de plan/apply.
+variable "telegram_token" {
+  description = "Telegram Bot API token used to dispatch alert notifications."
+  type        = string
+  sensitive   = true
+}
+
+# Identificador del chat/canal de Telegram destinatario de las alertas.
+variable "telegram_chat_id" {
+  description = "Telegram chat identifier that receives the alert notifications."
+  type        = string
+}
+
+# Modelo local servido por Ollama para generar las mitigaciones.
+variable "ollama_model" {
+  description = "Ollama model pulled and queried locally for remediation guidance."
+  type        = string
+  default     = "tinyllama"
+}
