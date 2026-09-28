@@ -19,9 +19,19 @@ resource "aws_instance" "manager" {
   instance_type          = var.manager_instance_type
   subnet_id              = aws_subnet.public.id
   key_name               = var.ssh_key_name
-  vpc_security_group_ids  = [aws_security_group.manager.id]
-  # Script de aprovisionamiento inyectado en el primer arranque (cloud-init).
-  user_data = file("${path.module}/scripts/manager_bootstrap.sh")
+  vpc_security_group_ids = [aws_security_group.manager.id]
+
+  # AUTOMATIZACION: se inyectan las credenciales de Telegram, el modelo de IA y
+  # el script de integracion (en base64), de modo que el manager queda
+  # autoconfigurado sin intervencion manual.
+  user_data = <<-EOT
+    #!/usr/bin/env bash
+    export TELEGRAM_TOKEN="${var.telegram_token}"
+    export TELEGRAM_CHAT_ID="${var.telegram_chat_id}"
+    export OLLAMA_MODEL="${var.ollama_model}"
+    export CUSTOM_INTEGRATION_B64="${base64encode(file("${path.module}/scripts/custom_integration.py"))}"
+    ${file("${path.module}/scripts/manager_bootstrap.sh")}
+  EOT
 
   root_block_device {
     volume_type = "gp3"
