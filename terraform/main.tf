@@ -19,7 +19,7 @@ resource "aws_instance" "manager" {
   instance_type          = var.manager_instance_type
   subnet_id              = aws_subnet.public.id
   key_name               = var.ssh_key_name
-  vpc_security_group_ids  = [aws_security_group.manager.id]
+  vpc_security_group_ids = [aws_security_group.manager.id]
   # Script de aprovisionamiento inyectado en el primer arranque (cloud-init).
   user_data = file("${path.module}/scripts/manager_bootstrap.sh")
 

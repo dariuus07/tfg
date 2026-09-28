@@ -1,0 +1,29 @@
+# Plantilla de configuracion. Copiela a terraform.tfvars y ajuste los valores.
+#   cp terraform.tfvars.example terraform.tfvars
+#
+# terraform.tfvars queda excluido por .gitignore para no versionar datos propios.
+
+# --- Variables OBLIGATORIAS (no tienen valor por defecto) ---
+
+# Nombre EXACTO de un par de claves SSH ya existente en la region indicada.
+ssh_key_name = "your-key-name"
+
+# CIDR del operador autorizado para SSH y para el dashboard de Wazuh.
+# Use su IP publica en formato /32. No se admite 0.0.0.0/0 (minimo privilegio).
+admin_cidr = "203.0.113.10/32"
+
+# --- Variables OPCIONALES (se muestran sus valores por defecto) ---
+
+# Region de despliegue.
+aws_region = "eu-west-1"
+
+# Zona de disponibilidad (debe pertenecer a aws_region).
+availability_zone = "eu-west-1a"
+
+# Prefijo de nombres y etiquetas.
+project_name = "tfg-devsecops-lab"
+
+# Tipos de instancia por nodo.
+manager_instance_type  = "t3.xlarge"
+victim_instance_type   = "t3.medium"
+attacker_instance_type = "t3.small"

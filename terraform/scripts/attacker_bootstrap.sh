@@ -25,10 +25,11 @@ SIMULATOR="${INSTALL_DIR}/attack_simulator.py"
 
 # ===========================================================================
 # PASO 1 | Instalacion de dependencias (Python 3, pip, git y requests).
-# En Amazon Linux 2023 el gestor de paquetes es dnf.
+# En Amazon Linux 2023 el gestor de paquetes es dnf. requests se instala como
+# paquete del sistema (python3-requests) para evitar el bloqueo PEP 668 que
+# afecta a la instalacion global con pip en entornos gestionados.
 # ===========================================================================
-dnf install -y python3 python3-pip git
-pip3 install requests
+dnf install -y python3 python3-pip python3-requests git
 
 # ===========================================================================
 # PASO 2 | Materializacion del simulador de ataques.
