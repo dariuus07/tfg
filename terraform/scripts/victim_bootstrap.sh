@@ -1,96 +1,67 @@
 #!/usr/bin/env bash
 #
 # victim_bootstrap.sh
-# Aprovisionamiento del nodo victima (OWASP Juice Shop + Wazuh Agent).
-# Ejecutado por cloud-init como root en el primer arranque de la instancia.
+# Aprovisionamiento del nodo victima sobre Amazon Linux 2023 (ECS-optimized).
+# Docker viene preinstalado en la AMI; aqui solo se habilita, se instala el
+# agente de Wazuh y se despliega OWASP Juice Shop.
 
-# ---------------------------------------------------------------------------
-# Modo estricto de shell:
-#   -e  aborta el script ante cualquier comando que devuelva un codigo != 0.
-#   -u  aborta si se referencia una variable no definida.
-#   -o pipefail  propaga el error de cualquier etapa de una tuberia (pipe).
-# Garantiza que un fallo de instalacion no deje la maquina en estado a medias.
-# ---------------------------------------------------------------------------
+# Modo estricto: -e aborta ante error, -u ante variable no definida,
+# pipefail propaga errores dentro de tuberias (curl | gpg, etc.).
 set -euo pipefail
 
-# Redirige stdout y stderr a un fichero de log persistente ademas de a la
-# consola, para poder auditar el aprovisionamiento con `tail -f`.
+# Duplica toda la salida al log persistente ademas de a la consola.
 exec > >(tee -a /var/log/user-data.log) 2>&1
 
 echo "[victim_bootstrap] inicio $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
-# Evita que apt lance dialogos interactivos (debconf) durante la instalacion
-# desatendida; imprescindible al ejecutarse sin terminal (cloud-init).
-export DEBIAN_FRONTEND=noninteractive
-
-# Direccion IP privada del Wazuh Manager. Se resuelve por variable de entorno;
-# si no se ha inyectado todavia, se conserva un marcador que sera sustituido
-# por Terraform (templatefile) en una fase posterior.
+# IP privada del Wazuh Manager. Terraform la exporta como variable de entorno
+# antes de ejecutar este script; el valor por defecto es solo una salvaguarda.
 WAZUH_MANAGER_IP="${WAZUH_MANAGER_IP:-MANAGER_IP_PLACEHOLDER}"
 
 # ===========================================================================
-# PASO 1 | Actualizacion de repositorios e instalacion de dependencias base.
+# PASO 1 | Docker (ya preinstalado en la AMI ECS-optimized).
+# Solo se habilita y arranca el servicio; no se instala nada.
 # ===========================================================================
-apt-get update -y
-apt-get install -y ca-certificates curl gnupg lsb-release apt-transport-https
+systemctl enable --now docker
 
-# ===========================================================================
-# PASO 2 | Instalacion de Docker Engine desde el repositorio oficial de Docker.
-# Se prefiere el repositorio oficial frente al paquete de Ubuntu para obtener
-# una version soportada y actualizada.
-# ===========================================================================
-
-# Directorio con permisos 0755 donde se almacenaran las claves GPG de apt.
-install -m 0755 -d /etc/apt/keyrings
-
-# Descarga e importa la clave publica de firma del repositorio de Docker.
-# --batch --yes hace la operacion idempotente (sobrescribe sin preguntar).
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg |
-  gpg --batch --yes --dearmor -o /etc/apt/keyrings/docker.gpg
-chmod a+r /etc/apt/keyrings/docker.gpg
-
-# Registra el repositorio de Docker firmado con la clave anterior, resolviendo
-# dinamicamente la arquitectura (amd64/arm64) y el nombre de la version de
-# Ubuntu (p.ej. "noble") en tiempo de ejecucion.
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" \
-  >/etc/apt/sources.list.d/docker.list
-
-# Refresca indices ya con el repositorio de Docker disponible e instala el
-# motor, la CLI, containerd y los plugins de buildx y compose.
-apt-get update -y
-apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-
-# Habilita el servicio para que arranque con el sistema y lo inicia ahora.
-systemctl enable docker
-systemctl start docker
+# Desactiva el agente de ECS: la AMI lo trae para clusteres ECS, que aqui no se
+# usan. Se detiene para evitar consumo y ruido en los logs. El "|| true" evita
+# que el modo estricto aborte si la unidad no existe.
+systemctl disable --now ecs || true
 
 # ===========================================================================
-# PASO 3 | Instalacion del agente de Wazuh desde el repositorio oficial 4.x.
-# La variable de entorno WAZUH_MANAGER es leida por el paquete .deb durante
+# PASO 2 | Instalacion del agente de Wazuh desde el repositorio YUM oficial.
+# ===========================================================================
+
+# Importa la clave GPG del repositorio para verificar la firma de los paquetes.
+rpm --import https://packages.wazuh.com/key/GPG-KEY-WAZUH
+
+# Registra el repositorio YUM de Wazuh (rama 4.x). El heredoc entre comillas
+# ('REPO') impide la expansion de variables dentro del bloque.
+cat >/etc/yum.repos.d/wazuh.repo <<'REPO'
+[wazuh]
+gpgcheck=1
+gpgkey=https://packages.wazuh.com/key/GPG-KEY-WAZUH
+enabled=1
+name=EL-$releasever - Wazuh
+baseurl=https://packages.wazuh.com/4.x/yum/
+protect=1
+REPO
+
+# Instala el agente. La variable WAZUH_MANAGER es leida por el paquete durante
 # la instalacion y fija automaticamente la IP del manager en ossec.conf.
-# ===========================================================================
-curl -fsSL https://packages.wazuh.com/key/GPG-KEY-WAZUH |
-  gpg --batch --yes --dearmor -o /usr/share/keyrings/wazuh.gpg
-chmod a+r /usr/share/keyrings/wazuh.gpg
+WAZUH_MANAGER="$WAZUH_MANAGER_IP" dnf install -y wazuh-agent
 
-echo "deb [signed-by=/usr/share/keyrings/wazuh.gpg] https://packages.wazuh.com/4.x/apt/ stable main" \
-  >/etc/apt/sources.list.d/wazuh.list
-
-apt-get update -y
-WAZUH_MANAGER="$WAZUH_MANAGER_IP" apt-get install -y wazuh-agent
-
-# Recarga la definicion de unidades systemd, habilita el agente en el arranque
-# y lo inicia para que establezca la sesion cifrada contra el manager (1514).
+# Recarga systemd, habilita el agente en el arranque y lo inicia para que
+# establezca la sesion cifrada con el manager en el puerto 1514.
 systemctl daemon-reload
-systemctl enable wazuh-agent
-systemctl start wazuh-agent
+systemctl enable --now wazuh-agent
 
 # ===========================================================================
-# PASO 4 | Barrera de sincronizacion.
-# Espera activa hasta confirmar que el agente ha establecido (ESTAB) la sesion
-# TCP con el manager en el puerto 1514, garantizando que la telemetria esta
-# operativa antes de exponer la aplicacion vulnerable. Se aplica un timeout de
-# 300 s para no bloquear cloud-init de forma indefinida si el manager no responde.
+# PASO 3 | Barrera de sincronizacion.
+# Espera a que el agente establezca (ESTAB) la sesion TCP con el manager antes
+# de exponer la aplicacion vulnerable, para no perder las primeras alertas.
+# Timeout de 300 s para no bloquear cloud-init indefinidamente.
 # ===========================================================================
 SYNC_TIMEOUT=300
 SYNC_ELAPSED=0
@@ -105,10 +76,9 @@ until ss -tan | grep -q "${WAZUH_MANAGER_IP}:1514.*ESTAB"; do
 done
 
 # ===========================================================================
-# PASO 5 | Despliegue del contenedor OWASP Juice Shop.
-# Se publica el puerto interno 3000 del contenedor en el puerto 80 del host.
-# La comprobacion previa hace la operacion idempotente: no recrea el contenedor
-# si ya existe (p.ej. tras un reinicio de la instancia).
+# PASO 4 | Despliegue del contenedor OWASP Juice Shop.
+# Publica el puerto interno 3000 en el puerto 80 del host. La comprobacion
+# previa hace la operacion idempotente (no recrea el contenedor si ya existe).
 # ===========================================================================
 if ! docker ps -a --format '{{.Names}}' | grep -q '^juice-shop$'; then
   docker run -d \
