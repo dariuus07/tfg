@@ -57,3 +57,33 @@ variable "admin_cidr" {
     error_message = "The admin_cidr must be a valid IPv4 CIDR and must not be 0.0.0.0/0."
   }
 }
+
+variable "manager_instance_type" {
+  description = "EC2 instance type for the Wazuh SIEM manager and local inference engine."
+  type        = string
+  default     = "t3.xlarge"
+}
+
+variable "victim_instance_type" {
+  description = "EC2 instance type for the monitored target workload."
+  type        = string
+  default     = "t3.medium"
+}
+
+variable "attacker_instance_type" {
+  description = "EC2 instance type for the adversary emulation node."
+  type        = string
+  default     = "t3.small"
+}
+
+variable "manager_root_volume_size" {
+  description = "Root EBS volume size in GiB for the manager node."
+  type        = number
+  default     = 50
+}
+
+variable "node_root_volume_size" {
+  description = "Root EBS volume size in GiB for the victim and attacker nodes."
+  type        = number
+  default     = 20
+}
